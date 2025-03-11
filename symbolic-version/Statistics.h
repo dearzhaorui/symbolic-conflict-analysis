@@ -51,7 +51,7 @@ class Statistics {
   
   uint numOverflow = 0, numSmallerNewRHS = 0, numSmallerNewRHSCard = 0;
   uint numValidUpdatesPB = 0, numValidUpdatesCard = 0, numPercValid = 0, tryToWatchMoreLits = 0, tryToWatchMoreLitsEnough = 0;
-  double sumPercValid = 0, sumPercValidPB = 0, sumPercValidCard = 0, sumPercValidPBTryMore = 0;
+  double sumPercValid = 0, sumPercValidPB = 0, sumPercValidCard = 0, sumPercValidPBEnoughWatches = 0;
   uint numEqualMaxOptRhs = 0, numSmallerMaxOptRhs = 0, numGreaterMaxOptRhs = 0, numCheckedForMaxOptRhs = 0, numSmallerCostUB = 0;
   
   int           numOfIntCuts;
@@ -193,10 +193,10 @@ class Statistics {
     long long numOfPropagationsPBTotal = numOfPropagationsPBCounter + numOfPropagationsPBWatch;
     double totalProps = numOfPropagationsPBTotal + numOfPropagationsCards + numOfPropagationsClauses + numOfPropagationsBinClauses;
     
-    cout << "%Prop in PBs:            " << numOfPropagationsPB/totalProps*100 << endl;
-    cout << "%Prop in Cards:          " << numOfPropagationsCards/totalProps*100 << endl;
-    cout << "%Prop in Clauses:        " << numOfPropagationsClauses/totalProps*100 << endl;
-    cout << "%Prop in BinClauses:     " << numOfPropagationsBinClauses/totalProps*100 << endl;
+    cout << "%Prop in PBs:            " << numOfPropagationsPB/totalProps*100 << "%" << endl;
+    cout << "%Prop in Cards:          " << numOfPropagationsCards/totalProps*100 << "%" << endl;
+    cout << "%Prop in Clauses:        " << numOfPropagationsClauses/totalProps*100 << "%" << endl;
+    cout << "%Prop in BinClauses:     " << numOfPropagationsBinClauses/totalProps*100 << "%" << endl;
     cout << "Props in PBs:            " << numOfPropagationsPBTotal << " ( %Counter: " << (double)numOfPropagationsPBCounter/numOfPropagationsPBTotal*100 
            << "% ,%Watch: " << (double)numOfPropagationsPBWatch/numOfPropagationsPBTotal*100 << "% )"<< endl;
     
@@ -216,11 +216,11 @@ class Statistics {
     cout << ". cl    conf: " << numOfClausesInConflicts << " ,perc " << (double)numOfClausesInConflicts/totalConf*100 << "%" << endl;
     cout << ". bin   conf: " << numOfBinClausesInConflicts << " ,perc " << (double)numOfBinClausesInConflicts/totalConf*100 << "%" << endl << endl;     
     
-    // bt0 = 0, only update the RHS of constraints that will not be falsified (counter >= 0) 
+    // -bt0 = false, only update the RHS of constraints that will not be falsified (counter >= 0) 
     cout << "avgPerc.Valid:         " << sumPercValid/numPercValid << "%" << " ,sumPerc " << sumPercValid << " ,nPerc " << numPercValid << endl;
     cout << "avgPerc.ValidPB:       " << sumPercValidPB/numPercValid << "%" << " ,sumPerc " << sumPercValidPB << endl;        
     cout << "avgPerc.ValidCard:     " << sumPercValidCard/numPercValid << "%" << " ,sumPerc " << sumPercValidCard << endl;
-    cout << "avgPerc.ValidPBTryMore:  " << sumPercValidPBTryMore/numPercValid << "%" << " ,sumPerc " << sumPercValidPBTryMore << endl;
+    cout << "avgPerc.ValidPBTryMore:  " << sumPercValidPBEnoughWatches/numPercValid << "%" << " ,sumPerc " << sumPercValidPBEnoughWatches << endl;
     
     // average percent in all cleanups
     cout << "\navgPerc.sumPercPBObjNumG0NotShaved:    " << sumPercPBObjNumG0NotShaved/numPerc << "%" << " ,sumPerc " << sumPercPBObjNumG0NotShaved << " ,nPerc " << numPerc << endl << endl;  
@@ -229,11 +229,12 @@ class Statistics {
     cout << "avgPerc.RHSObjNumE0:    " << sumPercE0/nSoluExistPB << "%" << " ,sumPerc " << sumPercE0 << " ,nPerc " << nSoluExistPB << endl;  
     cout << "avgPerc.G0Shaved:       " << sumPercG0Shaved/nSoluExistPB << "%" << " ,sumPerc " << sumPercG0Shaved << endl;  
     cout << "avgPerc.G0NotShaved:    " << sumPercG0NotShaved/nSoluExistPB << "%" << " ,sumPerc " << sumPercG0NotShaved << endl;
-    cout << "avgPerc.G0Card:    " << sumPercCardG0/nSoluExistCard << "%" << " ,sumPerc " << sumPercCardG0 << " ,nSoluExistCard " << nSoluExistCard << endl;  
+    cout << "avgPerc.G0Card:         " << sumPercCardG0/nSoluExistCard << "%" << " ,sumPerc " << sumPercCardG0 << " ,nSoluExistCard " << nSoluExistCard << endl;  
     
     cout << "numUpdateRHS          " << numUpdateRHS << endl;
     cout << "numSmallerNewRHS      " << numSmallerNewRHS << endl;
     cout << "numSmallerNewRHSCard  " << numSmallerNewRHSCard << endl;
+    cout << "tryToWatchMoreLits    " << tryToWatchMoreLits << endl;
     
     cout << "\nnumOverflow           " << numOverflow << endl;
     cout << "#over TWOTOTHE30TH:   " << numConstantOverflow << endl;  

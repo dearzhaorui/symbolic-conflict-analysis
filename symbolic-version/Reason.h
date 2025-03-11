@@ -39,7 +39,7 @@ public:
   inline int  getCardinalityNum() const {return int(reason >> 3);}
 
   inline friend ostream& operator<<(ostream& os, const Reason& c);
-  inline bool operator==(const Reason& other) {return reason == other.reason; }
+  inline bool operator==(const Reason& other) const {return reason == other.reason; }
 };
 
 inline Reason noReason() { return Reason(0,Reason::NO_REASON); }
@@ -58,7 +58,6 @@ inline Reason::Reason (int r, ReasonType type) {
       assert(getCtrId() == r);
       break;
     case CLAUSE:
-      //reason = 8*uint64_t(r) + 2;
       reason = 8*r + 2;
       assert(isClause());
       assert(getClauseNum() == r);  

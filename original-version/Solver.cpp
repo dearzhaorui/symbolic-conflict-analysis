@@ -149,12 +149,13 @@ void Solver::removeDuplicatesAndNegativesFromObjective (WConstraint& auxConstrai
     assert(p.first);
     if (p.first > 0) objective.push_back(p);
     else {
-      objective.push_back({-p.first,-p.second});
+      objective.emplace_back(-p.first,-p.second);
       addedConstantToObjective += p.first;
     }
   }
   
   if (abs(addedConstantToObjective) >= INT_MAX) cout << "LARGE addedConstantToObjective = " << addedConstantToObjective << ", obj constant will be " << int(-addedConstantToObjective) << endl;
+  
   WConstraint wc(objective,-addedConstantToObjective);
   wc.sortByIncreasingVariable();
   wc.removeDuplicates();
@@ -169,7 +170,7 @@ void Solver::removeDuplicatesAndNegativesFromObjective (WConstraint& auxConstrai
     int lit  = wc.getIthLiteral(i);
     int coef = wc.getIthCoefficient(i);
     assert(coef > 0);
-    if (model.isUndefLit(lit))      objective.push_back({coef, lit});
+    if (model.isUndefLit(lit))      objective.emplace_back(coef, lit);
     else if (model.isTrueLit(lit))  addedConstantToObjective += coef;
   }
   
@@ -193,10 +194,14 @@ void Solver::removeDuplicatesAndNegativesFromObjective (WConstraint& auxConstrai
   auxConstraint = WConstraint(coeffs,lits,rhs);
 }
 
-
-void Solver::backjumpToDL(int dl) {
-  if (propagate_by_priority) backjumpToDL1(dl); // default
-  else                       backjumpToDL2(dl);
+void Solver::backjumpToDL(int dl) { // default
+  assert( model.currentDecisionLevel()>=dl and dl>=0 );
+  ++stats.numOfBackjump;
+  
+  if (propagate_by_priority) 
+    while ( model.currentDecisionLevel() > dl) popAndUnassign1();
+  else
+    while ( model.currentDecisionLevel() > dl) popAndUnassign2();
 }
 
 int Solver::popAndUnassign() {
@@ -204,26 +209,9 @@ int Solver::popAndUnassign() {
   else                       return popAndUnassign2();
 }
 
-void Solver::backjumpToDL1(int dl) { // default
-  assert( model.currentDecisionLevel()>=dl and dl>=0 );
-  ++stats.numOfBackjump;
-  
-  while ( model.currentDecisionLevel() > dl) {
-    popAndUnassign1();
-  }
-}
-
- //for unique ptr
-void Solver::backjumpToDL2(int dl) {
-  assert( model.currentDecisionLevel()>=dl and dl>=0 );
-  ++stats.numOfBackjump;
-  
-  while ( model.currentDecisionLevel() > dl) {
-    popAndUnassign2();
-  }
-}
 
 int Solver::popAndUnassign1 () { // default
+  assert(propagate_by_priority);
   int lit = model.getLitAtTop();
   int var = abs(lit);
   
@@ -245,6 +233,7 @@ int Solver::popAndUnassign1 () { // default
 
 // for unique ptr
 int Solver::popAndUnassign2 () {
+  assert(!propagate_by_priority);
   int lit = model.getLitAtTop();
   int var = abs(lit);
   
@@ -528,7 +517,6 @@ void Solver::SMTBasedConflictAnalysisAndBackjump (const WConstraint& falsifiedCo
           addAndPropagatePBConstraint(conflictingConstraint, false,strat.NEW_CONSTRAINT_ACTIVITY,LBD, false);
           strat.reportLearnPB(conflictingConstraint.getSize());
         }
-    
         return;
       }
     } // END: backjump
@@ -560,6 +548,7 @@ void Solver::solve (int tlimit) {
   cout << "solve.....watchPercent: " << getWatchPercent() << ", useCard? " << getUseCardinality() << ", BT0 " << BT0 << ", multiObj " << multiObj << endl;
   cout << "init stats.numOfSolutionsFound = " << stats.numOfSolutionsFound << endl;
   
+  propagate();
   WConstraint auxConstraint;
   removeDuplicatesAndNegativesFromObjective(auxConstraint); 
   
@@ -626,8 +615,7 @@ void Solver::solve (int tlimit) {
       assert(rhs >= 0);
       next_obj_rhs = rhs;
       
-      
-      cout << "BestSoFar: " << bestSoFar << ", nSolu= " << stats.numOfSolutionsFound /* << " nDecs: " << stats.numOfDecisions << " nConfs: " << stats.numOfConflicts << ", dl " << model.currentDecisionLevel() << ", next_obj_rhs " << rhs << ", obj_num " << obj_num */ << endl;
+      cout << "BestSoFar: " << bestSoFar << ", nSolu= " << stats.numOfSolutionsFound << " nDecs: " << stats.numOfDecisions << " nConfs: " << stats.numOfConflicts /*<< ", dl " << model.currentDecisionLevel() << ", next_obj_rhs " << rhs << ", obj_num " << obj_num*/  << endl;
       
       
       if (rhs < 0 or abs(rhs) > INT_MAX) {cout << "Too LARGE new obj rhs = " << rhs << endl; exit(0);}
@@ -1199,8 +1187,6 @@ bool Solver::propagate () {
   }
 }
 
-    
-
 // for unique ptr
 bool Solver::propagate_by_uniquePtr () {
   assert(!conflict);
@@ -1693,7 +1679,6 @@ void Solver::minNumWatchesCleanup (const WConstraint & c, long long& wslk, int& 
 
 ////---------------------------------
 void Solver::addAndPropagatePBConstraint (WConstraint & c, const bool isInitial, int activity, const int LBD, bool isObj) {
-  assert(model.currentDecisionLevel() == 0);
   if (!isObj) c.simplify();
   
   PBConstraint pc(c,isInitial,activity,LBD);  // maxCoef is the first one
@@ -1746,8 +1731,8 @@ void Solver::addAndPropagateCardinality (WConstraint & c, const bool isInitial, 
   
   // [0....watch-1] --> non-false lits
   // [watch.......] --> false lits
-  //for(int j = watch; j < i; j++) assert(model.isFalseLit(c.getIthLiteral(j)));  // it holds
-  //if(i < c.getSize()) assert(model.isFalseLit(c.getIthLiteral(i)));  // because of the break
+  for(int j = watch; j < i; j++) assert(model.isFalseLit(c.getIthLiteral(j)));  // it holds
+  if(i < c.getSize()) assert(model.isFalseLit(c.getIthLiteral(i)));  // because of the break
 
   if(watch == degree) { // propagating
     assert(i == size and degree < size);

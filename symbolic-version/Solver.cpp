@@ -223,18 +223,18 @@ void Solver::removeDuplicatesAndNegativesFromObjective (WConstraint& auxConstrai
   stats.RhsLB = -1;
   stats.RhsUB = 0;
   for ( pair<int,int>& p : objective) stats.RhsUB += p.first; // assume all lits are true
-  //assert(addedConstantToCost == addedConstantToObjective + stats.RhsUB + removedUnitCoefFromObjective);
+  assert(addedConstantToCost == addedConstantToObjective + stats.RhsUB + removedUnitCoefFromObjective);
   stats.costLB = addedConstantToObjective;
   stats.costUB = addedConstantToObjective + stats.RhsUB;  // -infinite
   stats.RhsLB = addedConstantToCost - stats.costUB;
+  
   cout << "objective ctr is cardinalyty? " << (wc.getIthCoefficient(0) == 1) << " ,addedConstantToObjective " << addedConstantToObjective << " ,addedConstantToCost " << addedConstantToCost << " ,stats.RHS LB " << stats.RhsLB << " ,UB = " << stats.RhsUB << " ,cost LB " << stats.costLB << " ,cost UB " << stats.costUB << " ,numLits in obj " << objective.size() << ", " << removedUnitCoefFromObjective << endl;
-  //assert(stats.costLB == addedConstantToCost - stats.RhsUB -removedUnitCoefFromObjective);
   
   computeBestPolarityForVarInObjectiveFunction();
   
   stats.lastSubtractConstant = 0;
   vector<int> coeffs, lits;
-  long long int rhs = addedConstantToObjective + 1;
+  long long int rhs = addedConstantToObjective + 1;  // directly increase by 1 here
   for ( pair<int,int>& p : objective) {
     int coe   = -p.first; assert(coe < 0);
     int lit   = p.second;
@@ -250,23 +250,18 @@ void Solver::removeDuplicatesAndNegativesFromObjective (WConstraint& auxConstrai
 }
 
 void Solver::backjumpToDL(int dl) {
-  if (propagate_by_priority) backjumpToDL1(dl);
-  else                    backjumpToDL2(dl);
+  assert( model.currentDecisionLevel()>=dl and dl>=0 );
+  ++stats.numOfBackjump;
+  
+  if (propagate_by_priority) 
+    while ( model.currentDecisionLevel() > dl) popAndUnassign1();
+  else
+    while ( model.currentDecisionLevel() > dl) popAndUnassign2();
 }
 
 int Solver::popAndUnassign() {
   if (propagate_by_priority) return popAndUnassign1();
-  else                    return popAndUnassign2();
-}
-
-
-void Solver::backjumpToDL1(int dl) {
-  assert( model.currentDecisionLevel()>=dl and dl>=0 );
-  ++stats.numOfBackjump;
-  
-  while ( model.currentDecisionLevel() > dl) {
-    popAndUnassign1();
-  }
+  else                       return popAndUnassign2();
 }
 
 int Solver::popAndUnassign1 () {
@@ -288,16 +283,6 @@ int Solver::popAndUnassign1 () {
   return lit;
 }
 
-
-// for unique ptr
-void Solver::backjumpToDL2(int dl) {
-  assert( model.currentDecisionLevel()>=dl and dl>=0 );
-  ++stats.numOfBackjump;
-  
-  while ( model.currentDecisionLevel() > dl) {
-    popAndUnassign2();
-  }
-}
 // for unique ptr
 int Solver::popAndUnassign2 () {
   int lit = model.getLitAtTop();
@@ -655,11 +640,11 @@ void Solver::SMTBasedConflictAnalysisAndBackjump (const WConstraint& falsifiedCo
             stats.RhsUB = maxOptRhs; // smaller
             long long int lb = addedConstantToCost - stats.RhsUB - removedUnitCoefFromObjective;
             assert(stats.costLB < lb);
-            stats.costLB = lb; // become greater
+            stats.costLB = lb; // greater
             
-            if(writeInfo) *einfo << "   lem-" << stats.numSmallerMaxOptRhs << "   " << " :[ " << stats.costLB << " ,  " << stats.costUB << " ] " << "d " << distanceCost(stats.costLB, stats.costUB) << "  " << percImprovementCost(stats.costLB, stats.costUB, false) << "%" << "    rhs[ " << stats.RhsLB << " ,  " << stats.RhsUB << " ]  " << percImprovementRHS(stats.RhsLB, stats.RhsUB) << "%    " << process_time() << "  s" << endl;
+            if (writeInfo) *einfo << "   lem-" << stats.numSmallerMaxOptRhs << "   " << " :[ " << stats.costLB << " ,  " << stats.costUB << " ] " << "d " << distanceCost(stats.costLB, stats.costUB) << "  " << percImprovementCost(stats.costLB, stats.costUB, false) << "%" << "    rhs[ " << stats.RhsLB << " ,  " << stats.RhsUB << " ]  " << percImprovementRHS(stats.RhsLB, stats.RhsUB) << "%    " << process_time() << "  s" << endl;
             
-            if (stats.RhsLB >= stats.RhsUB or next_obj_rhs > stats.RhsUB or stats.costLB == stats.costUB) {
+            if (stats.RhsLB >= stats.RhsUB or next_obj_rhs > stats.RhsUB or stats.costLB == stats.costUB) { // not found yet
               cout << endl << "found RHS LB " << stats.RhsLB << " >= UB " << stats.RhsUB << " or next_rhs " << next_obj_rhs << " > UB " << stats.RhsUB << ", stop at this lemma" << ", nDecs: " << stats.numOfDecisions << " nConfs: " << stats.numOfConflicts << ", dl " << model.currentDecisionLevel() << ", costLB " << stats.costLB << " ,  costUB " << stats.costUB << endl;
               conflict = true;
               backjumpToDL(0);
@@ -810,7 +795,7 @@ void Solver::solve (int tlimit) {
       status = SOME_SOLUTION_FOUND;
       for (int i=1; i<=numVars; ++i) {lastSolution[i] = model.getValue(i);}
       
-      if(bestSoFar > stats.costUB) { cout << endl << "error: bestSoFar " << bestSoFar << " > stats.costUB " << stats.costUB << " , current stats.costLB " << stats.costLB << endl; exit(0); }
+      if (bestSoFar > stats.costUB) { cout << endl << "error: bestSoFar " << bestSoFar << " > stats.costUB " << stats.costUB << " , current stats.costLB " << stats.costLB << endl; exit(0); }
       if(bestSoFar < stats.costLB) { cout << endl << "error: bestSoFar " << bestSoFar << " < stats.costLB " << stats.costLB << endl; exit(0); }
       assert(bestSoFar <= stats.costUB);
       assert(bestSoFar >= stats.costLB);
@@ -830,7 +815,7 @@ void Solver::solve (int tlimit) {
       assert(rhs >= 0);
       next_obj_rhs = rhs;
       
-      cout << "BestSoFar: " << bestSoFar << ", nSolu= " << stats.numOfSolutionsFound /* << " nDecs: " << stats.numOfDecisions << " nConfs: " << stats.numOfConflicts << ", dl " << model.currentDecisionLevel() << ", next_obj_rhs " << rhs << ", obj_num " << obj_num */ << endl;
+      cout << "BestSoFar: " << bestSoFar << ", nSolu= " << stats.numOfSolutionsFound << " nDecs: " << stats.numOfDecisions << " nConfs: " << stats.numOfConflicts /*<< ", dl " << model.currentDecisionLevel() << ", next_obj_rhs " << rhs << ", obj_num " << obj_num*/ << endl;
       
       //cout << "BestSoFar: " << bestSoFar << ", nSolu= " << stats.numOfSolutionsFound << ", next_rhs " << rhs << ", LB " << stats.RhsLB << ", UB " << stats.RhsUB << ", cost LB " << stats.costLB << ", UB " << stats.costUB  << ", obj_num " << obj_num << ", " << currentTime << "s" << endl;
       
@@ -853,8 +838,8 @@ void Solver::solve (int tlimit) {
         obj.setConstant(next_obj_rhs);
         assert(obj.getSize() == auxConstraint.getSize());
         
-        bool found_inconsistent = false;
         backjumpToDL(0);
+        bool found_inconsistent = false;
         found_inconsistent = updateRHSOfCardsAtDL0(cardIds);
         if (!found_inconsistent and !conflict) updateRHSOfPBsAtDL0(pbs);
         ++stats.numUpdateRHS;
@@ -890,16 +875,17 @@ void Solver::solve (int tlimit) {
         }
       }
       
-      // reuse trail, only update the RHS of constraints that will not be falsified (counter >= 0) 
-      if (!BT0 and update_rhs and stats.numOfSolutionsFound > 1) {  // update PB RHS only if the ctr will not be falsified (SNF >= 0)
+      // reuse trail (DL >= 0), update PB RHS only if the ctr will not be falsified (slkMC >= 0)
+      if (!BT0 and update_rhs and stats.numOfSolutionsFound > 1) {
         assert(obj_num != -1);
         PBConstraint& obj = constraintsPB[obj_num];
         sumOfWatches[obj_num] += (obj.getConstant() - next_obj_rhs);
         obj.setConstant(next_obj_rhs);
         
         bool found_inconsistent = false;
-        updateRHSOfPBs2(); // update RHS only if the ctr will not be falsified (SNF >= 0)
-        found_inconsistent = updateRHSOfCards2(cardIds);
+        updateRHSOfPBsAtDLGth0(); // update RHS only if the ctr will not be falsified (SNF >= 0)
+        found_inconsistent = updateRHSOfCardsAtDLGth0(cardIds);
+        
         if (constraintsPB.size() > 0) {
           ++stats.nSoluExistPB;
           stats.sumPercE0 += (double)stats.numRHSObjNumE0/constraintsPB.size()*100;
@@ -914,7 +900,7 @@ void Solver::solve (int tlimit) {
         stats.sumPercValid += (double)(stats.numValidUpdatesPB + stats.numValidUpdatesCard)/(constraintsPB.size() + cardinalities.size())*100;
         stats.sumPercValidPB += (constraintsPB.size() > 0 ? (double)stats.numValidUpdatesPB/constraintsPB.size()*100 : 0);
         stats.sumPercValidCard += (cardinalities.size() > 0 ? ((double)stats.numValidUpdatesCard/cardinalities.size()*100) : 0);
-        stats.sumPercValidPBTryMore += (constraintsPB.size() > 0 ? ((double)stats.tryToWatchMoreLitsEnough/constraintsPB.size()*100) : 0);
+        stats.sumPercValidPBEnoughWatches += (constraintsPB.size() > 0 ? ((double)stats.tryToWatchMoreLitsEnough/constraintsPB.size()*100) : 0);
         
         if (found_inconsistent) {
           cout << endl << "found_inconsistent.........!" << endl;
@@ -924,7 +910,7 @@ void Solver::solve (int tlimit) {
           return;
         }
         if (cardIds.size() > 0) {
-          backjumpToDL(0);  // updateRHSOfCards2 found units in cardinalities!
+          backjumpToDL(0);  // updateRHSOfCardsAtDLGth0 found units in cardinalities!
           for (int i = 0; !conflict and i < (int)cardIds.size(); ++i) setAllLitsToTrueInCardinality(cardIds[i]);
           if (conflict) {
             cout << "conflicting at dl 0 after updating all RHS " << endl;
@@ -983,9 +969,7 @@ void Solver::solve (int tlimit) {
 }
 
 bool Solver::updateRHSOfPBsAtDL0 (vector<int>& pbs) {
-  assert(!conflict);
-  assert(model.currentDecisionLevel() == 0);
-  assert(stats.numOfSolutionsFound > 0);
+  assert(!conflict && model.currentDecisionLevel() == 0 && stats.numOfSolutionsFound > 0);
   stats.numRHSObjNumG0NotShaved = stats.numRHSObjNumG0Shaved = stats.numRHSObjNumE0 = 0;
   
   for (int k = 0; k < (int)constraintsPB.size(); ++k) {
@@ -999,22 +983,21 @@ bool Solver::updateRHSOfPBsAtDL0 (vector<int>& pbs) {
     if (shavedPBs[k]) {++stats.numRHSObjNumG0Shaved; continue;}
     int new_rhs = latest_rhs(c.getIndependentRHS(), c.getObjectiveRHS(), next_obj_rhs);
     int constant = c.getConstant();
-    if(new_rhs <= constant) {stats.numSmallerNewRHS += (new_rhs < constant); continue;}
+    if (new_rhs <= constant) {stats.numSmallerNewRHS += (new_rhs < constant); continue;}
     ++stats.numRHSObjNumG0NotShaved;
     c.setConstant(new_rhs);
     sumOfWatches[k] += (constant - new_rhs);
-    if (sumOfWatches[k] < 0) pbs.push_back(k);
+    if (sumOfWatches[k] < 0) pbs.push_back(k); // propagating or conflicting
   }
   return false;
 }
 
-// reuse trail, only update the RHS of constraints that will not be falsified (counter >= 0) 
-bool Solver::updateRHSOfPBs2 () {
-  assert(!conflict);
-  assert(stats.numOfSolutionsFound > 0);
+// reuse trail (dl >= 0), only update the RHS of constraints that will not be propagating or conflicting (wslkMC >= 0) 
+// we don't check for conflicts or propagation for any constraints, because they're too costly, and the DL could be different
+bool Solver::updateRHSOfPBsAtDLGth0 () {
+  assert(!conflict && stats.numOfSolutionsFound > 0);
   stats.numRHSObjNumG0NotShaved = stats.numRHSObjNumG0Shaved = stats.numRHSObjNumE0 = 0;
-  stats.numValidUpdatesPB = 0;
-  stats.tryToWatchMoreLits = stats.tryToWatchMoreLitsEnough = 0;
+  stats.numValidUpdatesPB = stats.tryToWatchMoreLitsEnough = 0;
   
   for (int k = 0; k < (int)constraintsPB.size(); ++k) {
     if (k == obj_num) continue;
@@ -1024,25 +1007,24 @@ bool Solver::updateRHSOfPBs2 () {
       assert(!shavedPBs[k]);
       continue;
     }
+    if (shavedPBs[k]) {++stats.numRHSObjNumG0Shaved; continue;}
     int constant = c.getConstant();
     int new_rhs = latest_rhs(c.getIndependentRHS(), c.getObjectiveRHS(), next_obj_rhs);
     if (new_rhs <= constant) {stats.numSmallerNewRHS += (new_rhs < constant); continue;}
     
-    if (shavedPBs[k]) {++stats.numRHSObjNumG0Shaved; continue;}
     ++stats.numRHSObjNumG0NotShaved;
+    long long tempWslkMCNewRhs = sumOfWatches[k]; 
+    tempWslkMCNewRhs += (constant - new_rhs);
     
-    long long SNF = sumOfWatches[k];
-    SNF += (constant - new_rhs);
-    
-    if (SNF < 0) {
-      if (useCounter[k]) continue;
-      tryToWatchMoreLits(k, SNF);
-      if (SNF < 0) continue; // no enough watches
-      ++stats.tryToWatchMoreLitsEnough;
+    if (tempWslkMCNewRhs < 0) { // conflicting or propagating
+      if (useCounter[k]) continue; 
+      tryToWatchMoreLits(k, tempWslkMCNewRhs);
+      if (tempWslkMCNewRhs < 0) continue; // no enough watches
+      ++stats.tryToWatchMoreLitsEnough; // found enough watches --> update the RHS of watched PB
     }
     
     c.setConstant(new_rhs);
-    sumOfWatches[k] = SNF;
+    sumOfWatches[k] = tempWslkMCNewRhs;
     ++stats.numValidUpdatesPB;
   }
 
@@ -1050,8 +1032,7 @@ bool Solver::updateRHSOfPBs2 () {
 }
 
 bool Solver::updateRHSOfCardsAtDL0 (vector<int>& cardIds) {
-  assert(model.currentDecisionLevel() == 0);
-  assert(stats.numOfSolutionsFound > 0);
+  assert(!conflict && model.currentDecisionLevel() == 0 && stats.numOfSolutionsFound > 0);
   stats.numCardObjNumG0Shaved = stats.numCardObjNumG0NotShaved = 0;
   
   for (uint k = 0; k < cardinalities.size(); ++k) {
@@ -1068,7 +1049,8 @@ bool Solver::updateRHSOfCardsAtDL0 (vector<int>& cardIds) {
     int ctrSize = c.getSize();
     if (new_rhs > ctrSize) {
       cout << "found_inconsistent, k " << k << ", new_rhs = " << new_rhs << ", ind_rhs " << c.getIndependentRHS() << ", obj_rhs " << c.getObjectiveRHS() << " * " << next_obj_rhs << ", ctrSize " << ctrSize << endl;
-      return true;}
+      return true;
+    }
     if (new_rhs == ctrSize) {
       cardIds.push_back((int)k);
       continue;
@@ -1092,7 +1074,7 @@ bool Solver::updateRHSOfCardsAtDL0 (vector<int>& cardIds) {
       while (watchIdx < ctrSize && (isFalse = model.isFalseLit(lit = c.getIthLiteral(watchIdx))) )
         watchIdx++;
         
-      if (isFalse and c.getNumBackjump() != stats.numOfBackjump) {
+      if (isFalse and c.getNumBackjump() != stats.numOfBackjump) { // circular search
         assert(lit == 0 or model.isFalseLit(lit));
         c.setNumBackjump(stats.numOfBackjump);
         watchIdx = i + 1;
@@ -1103,8 +1085,8 @@ bool Solver::updateRHSOfCardsAtDL0 (vector<int>& cardIds) {
       if (not isFalse) { // watch more lit
         assert(c.getIthLiteral(watchIdx) == lit);
         assert(not model.isFalseLit(lit));
-        c.setIthLiteral(watchIdx, lit_old); // put to front the current latest falsified literal, which is more close to the lit at degree.
-        c.setIthLiteral(i, lit); // the lit at idx=mid become false much earlier than the current false lit
+        c.setIthLiteral(watchIdx, lit_old);
+        c.setIthLiteral(i, lit);
         if (lit > 0) positiveCardLists[lit].emplace_back(k, i);
         else         negativeCardLists[-lit].emplace_back(k, i);
         assert(not model.isFalseLit(c.getIthLiteral(i))); // the new found no-false lit
@@ -1120,11 +1102,12 @@ bool Solver::updateRHSOfCardsAtDL0 (vector<int>& cardIds) {
   return false;
 }
 
-// DL can be > 0
-bool Solver::updateRHSOfCards2 (vector<int>& cardIds) {
-  assert(stats.numOfSolutionsFound > 0);
-  stats.numValidUpdatesCard = 0;
-  stats.numCardObjNumG0NotShaved = 0;
+
+// reuse trail (DL >= 0), only update the RHS of cardinalities that will have enough watches 
+// otherwise they could be conflicting or propagating at different levels, it's very costly to detect
+bool Solver::updateRHSOfCardsAtDLGth0 (vector<int>& cardIds) {
+  assert(!conflict && stats.numOfSolutionsFound > 0);
+  stats.numValidUpdatesCard = stats.numCardObjNumG0NotShaved = 0;
   
   for (uint k = 0; k < cardinalities.size(); ++k) {
     Cardinality& c = cardinalities[k];
@@ -1152,9 +1135,9 @@ bool Solver::updateRHSOfCards2 (vector<int>& cardIds) {
     for(i = old_rhs+1; i <= new_rhs; ++i) {
       int lit_old = c.getIthLiteral(i); // to be replaced by a non-false lit
       if (not model.isFalseLit(lit_old)) { 
-        //// watch them later 
-        //if (lit_old > 0) positiveCardLists[lit_old].push_back({k, i});
-        //else             negativeCardLists[-lit_old].push_back({k, i});
+           //// don't watch them here, because the RHS might not be updated
+        //if (lit_old > 0) positiveCardLists[lit_old].emplace_back(k, i);
+        //else             negativeCardLists[-lit_old].emplace_back(k, i);
         continue;
       }
       int lit = 0;
@@ -1164,7 +1147,7 @@ bool Solver::updateRHSOfCards2 (vector<int>& cardIds) {
       while (watchIdx < ctrSize && (isFalse = model.isFalseLit(lit = c.getIthLiteral(watchIdx))) )
         watchIdx++;
         
-      if (isFalse and c.getNumBackjump() != stats.numOfBackjump) {
+      if (isFalse and c.getNumBackjump() != stats.numOfBackjump) { // circular search
         assert(lit == 0 or model.isFalseLit(lit));
         c.setNumBackjump(stats.numOfBackjump);
         watchIdx = i + 1;
@@ -1175,26 +1158,25 @@ bool Solver::updateRHSOfCards2 (vector<int>& cardIds) {
       if (not isFalse) { // watch more lit
         assert(c.getIthLiteral(watchIdx) == lit);
         assert(not model.isFalseLit(lit));
-        c.setIthLiteral(watchIdx, lit_old); // put to front the current latest falsified literal, which is more close to the lit at degree.
-        c.setIthLiteral(i, lit); // the lit at idx=mid become false much earlier than the current false lit
-        //if (lit > 0) positiveCardLists[lit].push_back({k, i});
-        //else         negativeCardLists[-lit].push_back({k, i});
+        c.setIthLiteral(watchIdx, lit_old);
+        c.setIthLiteral(i, lit); // we just exchange the two unwatched lits, but not directly watch them
+        //if (lit > 0) positiveCardLists[lit].emplace_back(k, i);
+        //else         negativeCardLists[-lit].emplace_back(k, i);
         assert(not model.isFalseLit(c.getIthLiteral(i))); // the new found no-false lit
         assert(model.isFalseLit(c.getIthLiteral(watchIdx))); // the old false lit at mid
       }
-      else {
+      else 
         break;
-      }
     }
     
-    if (i != new_rhs + 1) {
-      continue; // no enough watches
+    if (i != new_rhs + 1) { 
+      continue; // break the loop in advance, there is no enough watches
     }
     ++stats.numValidUpdatesCard;
     c.setDegree(new_rhs);
     c.setWatchIdx(new_rhs+1);
     for(int i = old_rhs+1; i <= new_rhs; ++i) {
-      int lit_old = c.getIthLiteral(i); // to be replaced by a non-false lit
+      int lit_old = c.getIthLiteral(i);
       assert(not model.isFalseLit(lit_old));
       if (lit_old > 0) positiveCardLists[lit_old].emplace_back(k, i);
       else             negativeCardLists[-lit_old].emplace_back(k, i);
@@ -2140,25 +2122,71 @@ void Solver::propagateInitialConstraintCounter ( const int ctrId) {
   }
 }
 
-void Solver::tryToWatchMoreLits (const int ctrNum, long long& SNF) {
+//// one search
+//void Solver::tryToWatchMoreLits (const int ctrNum, long long& tempWslkMCNewRhs) {
+  //++stats.tryToWatchMoreLits;
+  //assert(!useCounter[ctrNum]);
+  //long long& wslkMC = sumOfWatches[ctrNum];
+  //assert(tempWslkMCNewRhs < 0); // this is only the temperory counter since the new rhs has not been applied
+ 
+  //PBConstraint& c = constraintsPB[ctrNum];
+  //const int size = c.getSize();
+  //int i = c.getMaxWIdx();
+  //if (c.getNumBackjump() < stats.numOfBackjump) {
+    //c.setNumBackjump(stats.numOfBackjump);
+    //i = 0;
+  //}
+  //for ( ; tempWslkMCNewRhs < 0 and i < size; ++i) {
+    //int lit  = c.getIthLiteral(i); 
+    //int coef = c.getIthCoefficient(i); 
+    //if (coef > 0 && !model.isFalseLit(lit)) {
+      //tempWslkMCNewRhs += coef;
+      //wslkMC += coef;
+      //c.setIthLitWatched(i, true);
+      //if (lit > 0) positivePBWatches[lit].emplace_back(ctrNum, coef, i);
+      //else         negativePBWatches[-lit].emplace_back(ctrNum, coef, i);
+    //}
+  //}
+//}
+
+ // circular search
+void Solver::tryToWatchMoreLits (const int ctrNum, long long& tempWslkMCNewRhs) {
   ++stats.tryToWatchMoreLits;
   assert(!useCounter[ctrNum]);
   long long& wslkMC = sumOfWatches[ctrNum];
-  assert(SNF < 0);
+  assert(tempWslkMCNewRhs < 0); // this is only the temperory counter since the new rhs has not been applied
  
   PBConstraint& c = constraintsPB[ctrNum];
   const int size = c.getSize();
-  for (int i = 0; SNF < 0 and i < size; ++i) {
+  int i = c.getMaxWIdx();
+  int start_i = i;
+  for (; tempWslkMCNewRhs < 0 and i < size; ++i) {
     int lit  = c.getIthLiteral(i); 
     int coef = c.getIthCoefficient(i); 
     if (coef > 0 && !model.isFalseLit(lit)) {
-      SNF += coef;
+      tempWslkMCNewRhs += coef;
       wslkMC += coef;
       c.setIthLitWatched(i, true);
       if (lit > 0) positivePBWatches[lit].emplace_back(ctrNum, coef, i);
       else         negativePBWatches[-lit].emplace_back(ctrNum, coef, i);
     }
   }
+  if (tempWslkMCNewRhs < 0 and c.getNumBackjump() < stats.numOfBackjump) {
+    c.setNumBackjump(stats.numOfBackjump);
+    i = 0;
+    for (; tempWslkMCNewRhs < 0 and i < start_i; ++i) {
+      int lit  = c.getIthLiteral(i); 
+      int coef = c.getIthCoefficient(i); 
+      if (coef > 0 && !model.isFalseLit(lit)) {
+        tempWslkMCNewRhs += coef;
+        wslkMC += coef;
+        c.setIthLitWatched(i, true);
+        if (lit > 0) positivePBWatches[lit].emplace_back(ctrNum, coef, i);
+        else         negativePBWatches[-lit].emplace_back(ctrNum, coef, i);
+      }
+    }
+  }
+  c.setMaxWIdx(i);
 }
 
 void Solver::watchMoreLitsInPB (const int ctrNum) {
@@ -2251,7 +2279,6 @@ bool Solver::propagatePBCtrWatch (const int ctrId, long long SNF, int litIdx, in
       if (new_coef > 0 && !model.isFalseLit(new_lit)) {  // not watched yet
         SNF += new_coef;
         pc.setIthLitWatched(idx, true);
-  
         if (new_lit > 0) positivePBWatches[new_lit].emplace_back(ctrId, new_coef, idx);
         else             negativePBWatches[-new_lit].emplace_back(ctrId, new_coef, idx);
       } 
@@ -2572,7 +2599,6 @@ void Solver::minNumWatchesCleanup (const WConstraint & c, long long& wslk, int& 
 
 ////---------------------------------
 void Solver::addAndPropagatePBConstraint (WConstraint & c, const bool isInitial, int activity, const int LBD, bool isObj) {
-  assert(model.currentDecisionLevel() == 0);
   if (!isObj) c.simplify();
   shavedPBs.push_back(c.isShaved());
   stats.numPBG0NotShaved += (!c.isShaved() and c.getObjectiveRHSNum() > 0);
@@ -2628,8 +2654,8 @@ void Solver::addAndPropagateCardinality (WConstraint & c, const bool isInitial, 
   
   // [0....watch-1] --> non-false lits
   // [watch.......] --> false lits
-  //for(int j = watch; j < i; j++) assert(model.isFalseLit(c.getIthLiteral(j)));  // it holds
-  //if(i < c.getSize()) assert(model.isFalseLit(c.getIthLiteral(i)));  // because of the break
+  for(int j = watch; j < i; j++) assert(model.isFalseLit(c.getIthLiteral(j)));  // it holds
+  if(i < c.getSize()) assert(model.isFalseLit(c.getIthLiteral(i)));  // because of the break
 
   if(watch == degree) { // propagating
     assert(i == size and degree < size);

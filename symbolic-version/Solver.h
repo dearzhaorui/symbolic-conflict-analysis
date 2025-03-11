@@ -302,8 +302,6 @@ class Solver {
   int  computeLBD (const WConstraint& c) const;
   int  computeLBD (const vector<int>& c) const;
   void backjumpToDL(int dl);
-  inline void backjumpToDL1(int dl);
-  inline void backjumpToDL2(int dl);
   void increaseScoresOfVars (const WConstraint& constraint);
   void writeCardinalityNotFalseInfo (Cardinality& c);
   void setAllLitsToTrueInCardinality(int cardId);
@@ -313,8 +311,8 @@ class Solver {
   bool updateRHSOfCards(int& finalStatus, int& currentLowestDL, vector<int>& cardIds);
   bool updateRHSOfPBsAtDL0 (vector<int>& pbs);
   bool updateRHSOfCardsAtDL0 (vector<int>& cardIds);
-  bool updateRHSOfPBs2 ();
-  bool updateRHSOfCards2 (vector<int>& cardIds);
+  bool updateRHSOfPBsAtDLGth0 ();
+  bool updateRHSOfCardsAtDLGth0 (vector<int>& cardIds);
   
   // Propagation
   bool propagate();
@@ -338,7 +336,7 @@ class Solver {
   bool propagatePBCtrWatch   (const int ctrId, long long SNF, int litIdx, int coef);
   void addAndPropagateCardinality (WConstraint & c, const bool isInitial, int activity, const int LBD);
   void watchMoreLitsInPB (const int ctrNum);
-  void tryToWatchMoreLits (const int ctrNum, long long& SNF);
+  void tryToWatchMoreLits (const int ctrNum, long long& tempWslkMCNewRhs);
   
   long long optimumRHS(WConstraint& c);
   void removeUnits(WConstraint& c);

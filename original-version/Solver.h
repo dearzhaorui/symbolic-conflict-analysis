@@ -296,8 +296,6 @@ class Solver {
   int  computeLBD (const WConstraint& c) const;
   int  computeLBD (const vector<int>& c) const;
   void backjumpToDL(int dl);
-  inline void backjumpToDL1(int dl);
-  inline void backjumpToDL2(int dl);
   void increaseScoresOfVars (const WConstraint& constraint);
   
   // Propagation

@@ -10,10 +10,6 @@
 #include <numeric>
 
 #include <boost/multiprecision/cpp_int.hpp>
-//#if WITHGMP
-//#include <boost/multiprecision/gmp.hpp>
-//#endif  // WITHGMP
-
 #include <boost/config.hpp>
 #include <exception>
 #include <boost/rational.hpp>
@@ -21,13 +17,8 @@ using namespace std;
 using boost::rational;
 using boost::rational_cast;
 
-//#if WITHGMP
-//using int128 = boost::multiprecision::int128_t;  // NOTE: a bit slower than __int128, but plays nice with mpz_int
-//using bigint = boost::multiprecision::mpz_int;   // NOTE: requires GMP
-//#else
 using int128 = __int128;
 using bigint = boost::multiprecision::cpp_int;
-//#endif  // WITHGMP
 
 #define TWOTOTHE30TH (long long)(1<<30)
 #define TWOTOTHE31ST (((long long)(1))<<31)
@@ -76,13 +67,6 @@ inline std::ostream& operator<<(std::ostream& os, const rational<int>& x) {
 inline std::ostream& operator<<(std::ostream& os, const pair<int, int>& x) {
   return os << x.first << "/" << x.second;
 }
-
-//template<class T>
-//T GCD(T a, T b) {
-  //assert(a>=0); assert(b>=0);
-  //if (b == 0) return a;
-  //return GCD<T>( b, a%b );
-//}
 
 template<class T>
 T GCD(T a, T b) {   // new
@@ -133,76 +117,13 @@ inline bool isOrderedByIncreasingVariable(const vector<pair<int,int> >& v) {
 
 
 inline pair<int,int> simplify_rational (const pair<int,int>& a) {
-  //if (a.second <= 0) {cout << "Possible overflow type G, a.second = " << a.second << ", a.first " << a.first << endl; exit(0);}
+  if (a.second <= 0) {cout << "Possible overflow type G, a.second = " << a.second << ", a.first " << a.first << endl; exit(0);}
   assert(a.second > 0);
   int gcdV = GCD(abs(a.first), abs(a.second));
   return {a.first/gcdV, a.second/gcdV}; // compute GCD of num and den, and divide both of them
 }
 
 inline int sign_int (int a) { return (a > 0) - (a < 0); }
-
-//inline rational<int> simplify_rational2 (const rational<int>& a) {
-  //if (a.denominator() <= 0) {cout << "Possible overflow type G, a.second = " << a.denominator()  << ", a.first " << a.numerator() << endl; exit(0);}
-  //assert(a.denominator() > 0);
-  //int gcdV = GCD(abs(a.numerator()), a.denominator());
-  //return a/gcdV; // compute GCD of num and den, and divide both of them
-//}
-
-/*
-inline rational<int> add_rational (const rational<int>& a, const rational<int>& b) {
-  assert(a.denominator() > 0);
-  assert(b.denominator() > 0);
-
-  #ifndef NDEBUG
-    if (a.denominator() == b.denominator()) {
-      long long int w = ((long long)(a.numerator()) + (long long)(b.numerator()));
-      if (abs(w) > INT_MAX) {cout << "Possible overflow type E, we are adding " << (long long)(a.numerator()) << " " << b.numerator() << " den " << a.denominator() << endl; exit(1);}
-    }
-    else {
-      long long int x = (long long)(a.denominator())*(long long)(b.denominator()); 
-      if (x < 0  or abs(x) > INT_MAX) {cout << "Possible overflow type A" << endl; exit(1);}
-      
-      long long int y = ((long long)(a.numerator()) * (long long)(b.denominator())); 
-      long long int z = ((long long)(b.numerator()) * (long long)(a.denominator())); 
-      
-      if (abs(y) > INT_MAX or abs(z) > INT_MAX or abs(z+y) > INT_MAX) {
-        cout << "Possible overflow type C, b.denominator() = " << b.denominator() << ", y " << y << ", z " << z << ", z+y " << z+y << endl; 
-        
-        assert(b.denominator() == 1);  // it should because of removing units. it happens when only update RHS of PBs, no Cards. eg. 459*.lp
-          int int_a = roundedUpDouble(boost::rational_cast<double>(a));
-          int int_b = roundedUpDouble(boost::rational_cast<double>(b));
-          if (abs((long long)int_a + (long long)int_b) > INT_MAX) {cout << "Possible overflow type F!" << endl; exit(0);}
-          int v = int_a + int_b;
-          
-          int v2 = roundedUpDouble(boost::rational_cast<double>(a+b));
-          
-          if (v != v2) {
-            cout << "Possible rational overflow 1, b.denominator() = " << b.denominator() << endl; 
-            cout << "we should get v " << v << ", but rational v2 = " << v2 << ", cast = " << boost::rational_cast<double>(a+b) << endl;
-            cout << "int_a = " << int_a << ", b.numerator() = " << b.numerator() << endl;
-            exit(0);
-          }
-        
-      }
-      
-    }
-  #endif
-  
-  rational<int> v(0, 1);
-  try {
-    v = a+b;
-  }
-  catch (const boost::bad_rational &e) {
-    cout << "Bad rational, as expected: " << e.what() << endl;
-    exit(0);
-  }
-  catch (...) {
-    cout << "Wrong exception raised!" << endl;
-    exit(0);
-  }
-  return v;
-}
-*/
 
 inline rational<int> add_rational (const rational<int>& a, const rational<int>& b) {
   assert(a.denominator() > 0);
