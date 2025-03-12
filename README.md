@@ -6,7 +6,7 @@ This repository constains all sources used in the paper "Symbolic Conflict Analy
 
 A PB solver with symbolic conflict analysis procedure will keep a symbolic representation for the degree of every constraint.
 When an objective function is strengthened in maximization problems, the solver allows to 
-(1) strengthen the rerused learned constraints drived from the objective function between problems, thus further pruning the search space traversal. 
+(1) strengthen the rerused learned constraints drived from the objective function between problems, thus further pruning the search space traversal,
 (2) automatically extract upper bounds from them to estimate how far the solver is from reaching an optimal solution.
 
 Experimental results show that this symbolic procedure is indeed effective with important runtime improvements in problems where several
@@ -20,23 +20,22 @@ The experiments have been done in a cluster with 10 nodes of type Dell PowerEdge
 - Boost library: https://www.boost.org 
 
 # Build and Run
-Check the `Makefile`
-
-The flags below are the default ones used in experiments.
+To check the usage, go to one of solver directories:
+```bash
+$ make -j
+$ ./pbsat -help
+```
 
    Original solver:
 ```bash
 $ cd original-solver
 $ make -j
-$ ./pbsat benchmark.opb/.lp
+$ ./pbsat benchmark.opb    // default flags: -bt0 1 -wperc 0
 ```
 
    Symbolic solver:
 ```bash
 $ cd symbolic-solver
 $ make -j
-$ ./pbsat benchmark.opb/.lp
+$ ./pbsat benchmark.opb   // default flags: -bt0 1 -wperc 0 -symb 1
 ```
-
-
-# Run
