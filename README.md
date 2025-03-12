@@ -15,5 +15,28 @@ solutions are found, and the overhead is negligible.
 The experiments have been done in a cluster with 10 nodes of type Dell PowerEdge R240 with Intel Xeon E-2124. Every solver on a node is set to have 4 cores and 15GB of memory available. The time limit is 3600 seconds.
 
 
+# Dependencies
+- At least C++14 
+- Boost library: https://www.boost.org 
+
+# Build and Run
+Check the `Makefile`
+
+The flags below are the default ones used in experiments.
+
+   Original solver:
+```bash
+$ cd original-solver
+$ make -j
+$ ./pbsat benchmark.opb/.lp
+```
+
+   Symbolic solver:
+```bash
+$ cd symbolic-solver
+$ make -j
+$ ./pbsat benchmark.opb/.lp
+```
 
 
+# Run
