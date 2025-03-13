@@ -26,16 +26,22 @@ $ make -j
 $ ./pbsat -help
 ```
 
-   Original solver:
+Original solver:
 ```bash
 $ cd original-solver
 $ make -j
 $ ./pbsat benchmark.opb    // default flags: -bt0 1 -wperc 0
 ```
 
-   Symbolic solver:
+Symbolic solver:
 ```bash
 $ cd symbolic-solver
 $ make -j
 $ ./pbsat benchmark.opb   // default flags: -bt0 1 -wperc 0 -symb 1
+```
+
+# Debug
+Compile with the flag `d=1` in any solver directory:
+```bash
+$ make -j d=1
 ```

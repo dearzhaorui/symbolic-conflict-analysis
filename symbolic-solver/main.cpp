@@ -310,7 +310,7 @@ void showUsage(char* exec) {
   cout << "decision --> specify the decision literals if it exists (default empty)" << endl;
   cout << "iniSol   --> specify the initial solution if it exists  (default empty)" << endl;
   cout << "r        --> specify an input file to be read, and solver set readInfo to true." << endl;
-  cout << "w        --> specify an output file to be wrote, and solver set writeInfo to true." << endl;
+  cout << "w        --> specify an output file to be writen, and solver set writeInfo to true." << endl;
   cout << "id       --> (integer) the ID of solver" << endl;
   cout << "d        --> (integer) the decison limit" << endl;
   cout << "c        --> (integer) the conflict limit" << endl;

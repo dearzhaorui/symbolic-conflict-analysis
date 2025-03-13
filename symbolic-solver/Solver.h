@@ -85,8 +85,6 @@ class Solver {
     PBWatchElem (int ctrNum, int c, int idx):ctrId(ctrNum), coef(c), idx(idx) {}
   };
   
-  vector<Clause> clauses;
-  
   vector<vector<WatchListElem>> positiveWatchLists;
   vector<vector<WatchListElem>> negativeWatchLists;
   
@@ -102,26 +100,20 @@ class Solver {
   vector<OccurList> positiveOccurLists;
   vector<OccurList> negativeOccurLists;
   
-  // If constraint propagates or is conflicting then necessarily propCounter is < 0
-  // propCounter is: sum of all coefficient of non-false literals (how much the lhs could be)
-  //                  minus the rhs
-  //                  minus an upperbound of the largest coefficient of an unassigned literal
-  //                           (computing it precisely is too expensive)
   vector<PBConstraint> constraintsPB;
   vector<Cardinality> cardinalities;
+  vector<Clause> clauses;
   vector<int> LBDs;
   vector<bool> useCounter;
   vector<bool> shavedPBs, shavedCards;
-  vector<long long> sumOfWatches;
+  vector<long long> sumOfWatches; // the real value is (sum of non-false watches - maxCoef)
 
   int trueVarAtDLZero;
   int falseVarAtDLZero;
-  vector<int> originalVar2NewLit;//var in the input file --> current literal   // rui: varString --> var --> lit(the sign depends on the coef of varString)
+  vector<int> originalVar2NewLit;//var in the input file --> current literal (in case we want to rename the lits)   // varString --> var --> lit(the sign depends on the coef of varString)
   vector<int> oldVar2NewLit; // this is used when apply newly found SCCs
  public:
   Statistics stats;
-  //int bestCost;
-  //vector<int> opt_solu;
   
  private:
   Strategy strat;
@@ -144,13 +136,11 @@ class Solver {
   vector<int> initialInputSolution; // for heuristic
   StatusSolver status;
   bool SATConflictAnalysis;
-  int conflictAnalysisMethod;
   
   int id; // used to share units/binaries
   bool infoToShare;
   bool writeInfo;
   bool readInfo;
-  bool usedDecreasingCoeff; // this flag is useful only for watched propagation. (-watch 1), to disable it, use (-watch 1  -sort 0)
   int timeLimit;
   double watchPercent;
   bool useCardinality;
@@ -163,7 +153,6 @@ class Solver {
   bool sync_rhs;
   bool BT0; // default is true
   bool propagate_by_priority = true;
-  long long keptLemmasObjNumG0NotCls;
   bool multiObj; // default is false
   
   vector<pair<int,int> > binsToShare;
@@ -191,9 +180,6 @@ class Solver {
   inline void  setMultipleObj(bool multi) {multiObj = multi;}
   inline void  setPropagatebyPriority(bool prior) {propagate_by_priority = prior;}
   
-  inline bool  useDecreasingCoeff() {return usedDecreasingCoeff;}
-  inline void  setUseDecreasingCoeff(bool useDecCoeff) {usedDecreasingCoeff = useDecCoeff;}
-  
   void         solve(int tlimit);
   
   StatusSolver currentStatus ( );
@@ -202,7 +188,6 @@ class Solver {
   inline void  readDecision(const string& filePolarity) {strat.readDecisionStrategy(filePolarity,stringVar2Num);}
   void  readInitialSolution(const string& fileName);
   void checkInitialInputSolutionNeeded();
-  inline void  setConflictAnalysisMethod(int caType)    {conflictAnalysisMethod = caType;}
   
   void addAndPropagatePBConstraint (WConstraint & c, const bool isInitial, int activity, const int LBD, bool isObj = false);
   
@@ -267,7 +252,6 @@ class Solver {
   bool constraintIsContradiction (const WConstraint & c) const;
   
   long long maxSumOfConstraintMinusRhs          (const WConstraint & c) const;
-  long long simulateMaxSumOfConstraintMinusRhs          (const WConstraint & c, int h) const;
   long long maxSumOfConstraintMinusRhsPropagated(const WConstraint & c) const;
   
 
@@ -276,14 +260,11 @@ class Solver {
   void fixRoundingProblem(int confLit, int coef, WConstraint & c) const;
   void ffixRoundingProblem(int x, WConstraint & c) const;
   void fixRoundingProblemSAT(int l, WConstraint & c) const;
-  void simulateFixRoundingProblemSAT(int l, WConstraint & c, int h) const;  
   
   // Conflict analysis and learning
   void backjumpMultipleOptions ( const WConstraint& wc );
   template<class T, class G> bool applyCut( int var, const WConstraint & c1, const WConstraint & c2, WConstraint & cut, bool& clash, bool& isInconsistentCut );
   bool applyCut( int var, const WConstraint & c1, const WConstraint & c2, WConstraint & cut, bool& clash, bool& isInconsistentCut );
-  double simulateSMTBasedConflictAnalysisAndBackjump(const WConstraint& falsifiedConstraint, WConstraint& toLearn, int& LBD, int& levelToBJ, bool& asserting );
-  void SATBasedConflictAnalysisAndBackjump();
   WConstraint instantiateConstraint (WConstraint& c) const;
   void conflictAnalysis();
   void lemmaShortening(vector<int>& lemma);
@@ -294,7 +275,6 @@ class Solver {
   int lowestDLAtWhichPBPropagates( const int pbId, bool& isConflicting, bool& isPropagating) ;
   int lowestDLAtWhichCardinalityPropagatesOrConflicts (const int cardId, const int startFalseIdx, bool& isConflicting, bool& isPropagating);
   int lowestDLAtWhichClausePropagates( const WConstraint & c) const;
-  int simulateLowestDLAtWhichClausePropagates( const WConstraint & c, int h) const;  
   int  computeLBD (const WConstraint& c) const;
   int  computeLBD (const vector<int>& c) const;
   void backjumpToDL(int dl);
@@ -336,9 +316,6 @@ class Solver {
   
   long long optimumRHS(WConstraint& c);
   void removeUnits(WConstraint& c);
-  void checkBestSoluSatisfy (PBConstraint& c, int ctrNum);
-  void checkBestSoluSatisfy (WConstraint& c, int ctrNum);
-  void checkBestSoluSatisfy (Cardinality& c, int ctrNum);
   int  minWatches (const WConstraint & c);
   void minNumWatchesCleanup (const WConstraint & c, long long& wslk, int& numWatches);
   

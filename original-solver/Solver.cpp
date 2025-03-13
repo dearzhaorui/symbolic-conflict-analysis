@@ -35,7 +35,6 @@ Solver::Solver(int nVars, clock_t beginTime, bool optMinimizing, string filename
   infoToShare(false),
   writeInfo(false),
   readInfo(false),
-  usedDecreasingCoeff(true),
   timeLimit(0),
   watchPercent(0), // use counting propagation by default
   useCardinality(true),
@@ -49,7 +48,6 @@ Solver::Solver(int nVars, clock_t beginTime, bool optMinimizing, string filename
   varNames = vector<string> (nVars+1);
   minimizing = optMinimizing;
   inputfile = filename;
-  conflictAnalysisMethod = 1; // default is SAT
   for (int v = 1; v <= nVars; ++v) originalVar2NewLit[v] = v;
   stats.time.real = absolute_real_time ();
   stats.time.process = absolute_process_time ();
@@ -539,7 +537,14 @@ double Solver::luby(double y, int i) {
   return std::pow(y, seq);
 }
 
-// Original Counter propagation
+
+/*
+ * Original version: the flags are default. Solver always backjump to DL 0, and use counting propagation by default
+ * The following two commands are equal:
+ * ./pbsat -bt0 1 -wperc 0 *.opb 
+ * ./pbsat *.opb 
+*/
+
 void Solver::solve (int tlimit) {  
   bool feasibilityProblem = (originalObjective.size() == 0);
   timeLimit = tlimit;
@@ -551,16 +556,10 @@ void Solver::solve (int tlimit) {
   propagate();
   WConstraint auxConstraint;
   removeDuplicatesAndNegativesFromObjective(auxConstraint); 
-  
   if (conflict) {status = INFEASIBLE; return;}
   
   strat.reportInitialSizes(constraintsPB.size(),cardinalities.size(), clauses.size(),stats.numOfBinClauses);
-  cout << "initial num units: " << model.trailSize() << endl;
-  cout << endl;
-  cout << "initial Props in PB:            " << stats.numOfPropagationsPB         << endl;
-  cout << "initial Props in Clause:        " << stats.numOfPropagationsClauses    << endl;
-  cout << "initial Props in BinClause:     " << stats.numOfPropagationsBinClauses << endl;
-  cout << endl << "initial PBs: " << constraintsPB.size() << " ,Cards: " << cardinalities.size() << " ,Clauses: " << clauses.size() << " ,Bins: " << stats.numOfBinClauses << endl;
+  cout << "initial num units: " << model.trailSize() << endl << endl;
   doCleanup();
   
   while (true) {
@@ -1053,7 +1052,6 @@ void Solver::visitPBCounterListsUniquePtr (int lit) {
       ++counter;
       if(counter == nVisited) break;
     }
-    //--model.lastPropagatedPB; // decrease it in propagate()
   }
 }
 
@@ -1169,8 +1167,11 @@ bool Solver::propagate () {
     else if (not model.areAllLitsPropagatedPBWatch()) { // PB Watched propagation
       int lit = model.getNextLitToPropagatePBWatch();
       assert(lit != 0); 
-      //visitPBWatches(-lit); // the version in RoundingSat, visits PB watches and directly check for propagation
-      visitPBWatchesLazily(-lit); //slightly changed version, visits PB watches and check for propagation only when the counter < 0
+      /*The following works. this is the version in RoundingSat, visits PB watches and directly check for propagation*/
+      // visitPBWatches(-lit);
+      
+      /*slightly changed version, visits PB watches and check for propagation only when the counter < 0*/
+      visitPBWatchesLazily(-lit); 
     }
     else if (not model.areAllLitsPropagatedPB()) { // PB Counter propagation
       int lit = model.getNextLitToPropagatePB();
@@ -1179,7 +1180,7 @@ bool Solver::propagate () {
     }
     else {
       assert(not conflict);
-      //checkAllConstraintsPropagated();
+      //checkAllConstraintsPropagated(); // for debugging
       return !conflict;
     }
     
@@ -1199,8 +1200,12 @@ bool Solver::propagate_by_uniquePtr () {
       visitBinClause(-lit);          if (conflict) {--model.lastPropagatedPB; return !conflict;}
       visitWatchList(-lit);          if (conflict) {--model.lastPropagatedPB; return !conflict;}
       visitCardList(-lit);           if (conflict) {--model.lastPropagatedPB; return !conflict;}
-      //visitPBWatchesUniquePtr(-lit); if (conflict) {--model.lastPropagatedPB; return !conflict;} // the version in RoundingSat, visits PB watches and directly check for propagation
-      visitPBWatchesUniquePtrLazily(-lit); if (conflict) {--model.lastPropagatedPB; return !conflict;} //slightly changed version, visits PB watches and check for propagation only when the counter < 0
+      
+      /*The following works. this is the version in RoundingSat, visits PB watches and directly check for propagation*/
+      //visitPBWatchesUniquePtr(-lit); if (conflict) {--model.lastPropagatedPB; return !conflict;} 
+      
+      /*slightly changed version, visits PB watches and check for propagation only when the counter < 0*/
+      visitPBWatchesUniquePtrLazily(-lit); if (conflict) {--model.lastPropagatedPB; return !conflict;} 
       visitPBCounterListsUniquePtr(-lit); 
       
       if (conflict) {
@@ -1208,8 +1213,6 @@ bool Solver::propagate_by_uniquePtr () {
         lit = -lit;
         
         vector<PBWatchElem>& wl = (lit>0?positivePBWatches[lit]:negativePBWatches[-lit]);
-        if (wl.size() == 0) return !conflict;
-        
         for (PBWatchElem& e: wl) sumOfWatches[e.ctrId] += e.coef;
         
         return !conflict; 
@@ -2236,6 +2239,7 @@ void Solver::buildBinaryClauses (const vector<pair<int,int> >& binClauses) {
   }
 }
 
+// not used yet
 void Solver::discoverImplicitBinClauses (int ctrId, WConstraint& ic) {
   assert(model.currentDecisionLevel() == 0);
   static vector<bool> added(maxLitId() + 1,false);  added.resize(maxLitId()+1,false);
@@ -2247,7 +2251,7 @@ void Solver::discoverImplicitBinClauses (int ctrId, WConstraint& ic) {
   ic.sortByDecreasingCoefficient();
   long long int S = maxSumOfConstraintMinusRhs(ic);
   for (int i = 0; i < ic.getSize(); ++i) {
-    assert(model.isUndefLit(ic.getIthLiteral(i)));  //rui
+    assert(model.isUndefLit(ic.getIthLiteral(i)));
     long long int limit = S - ic.getIthCoefficient(i);
     if (i + 1 < ic.getSize() and ic.getIthCoefficient(i+1) <= limit) { // no more binaries  // because limit-ic.getIthCoefficient(i+1) >= 0 for all j > i
       if (not st.empty()) {
@@ -2282,6 +2286,7 @@ void Solver::discoverImplicitBinClauses (int ctrId, WConstraint& ic) {
 }
 
 
+// not used yet
 void Solver::discoverImplicitBinClauses2 (int ctrId, WConstraint& ic) {
   assert(model.currentDecisionLevel() == 0);
   
@@ -2289,7 +2294,7 @@ void Solver::discoverImplicitBinClauses2 (int ctrId, WConstraint& ic) {
   long long int S = maxSumOfConstraintMinusRhs(ic);
   
   for (int i = 0; i < ic.getSize(); ++i) {
-    assert(model.isUndefLit(ic.getIthLiteral(i)));  //rui
+    assert(model.isUndefLit(ic.getIthLiteral(i)));
     long long int limit = S - ic.getIthCoefficient(i);
     if (i + 1 < ic.getSize() and ic.getIthCoefficient(i+1) <= limit) { // no more binaries
       return;
@@ -2310,7 +2315,7 @@ int Solver::getNextDecisionVar() {
     while ( ctr < 200 and not model.isUndefVar(v) ) { v = rand() % numVars + 1; ctr++; }
     if ( model.isUndefVar(v) )  return v; 
   }
-  v = maxHeap.consultMax();  // rui: this can be moved to above if()
+  v = maxHeap.consultMax();
   while ( v != 0 and not model.isUndefVar(v)) { maxHeap.removeMax(); v=maxHeap.consultMax(); }
   //if (v != 0) maxHeap.reduceScore(v);
   return v;
@@ -2470,7 +2475,7 @@ void Solver::lemmaShortening (vector<int>& lemma){
           break;
         }
 
-        // Albert: the three true in AuxFunction were false in the previous SAT solver
+        // the three true in AuxFunction were false in the previous SAT solver
         // it seems to me that this is stronger as we can ignore dl-zero literals
         Reason r = model.getReasonOfLit(testingLit);
         if (r.isBinClause())
@@ -2502,12 +2507,7 @@ void Solver::lemmaShortening (vector<int>& lemma){
         
         ++testingIndex;
       }
-      
       assert(testingIndex != lastMarkedInLemma or litIsRedundant);
-
-      //Test ends only if a) Some unit or decision is reached
-      //or b) all the reason's lits are already marked
-
       //Clean tested literals
       while ( lastMarkedInLemma > originalSizeLemma) {
         --lastMarkedInLemma;
@@ -2549,7 +2549,6 @@ void Solver::fixRoundingProblemSAT (int l, WConstraint & c) const {
     int var = abs(c.getIthLiteral(i));
     if (var == x) {
       coeffL = c.getIthCoefficient(i);
-      //      w2.addMonomial(1,c.getIthLiteral(i));
     }
   }  
 

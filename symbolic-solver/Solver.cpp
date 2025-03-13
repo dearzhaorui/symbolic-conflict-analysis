@@ -37,7 +37,6 @@ Solver::Solver(int nVars, clock_t beginTime, bool optMinimizing, string filename
   infoToShare(false),
   writeInfo(false),
   readInfo(false),
-  usedDecreasingCoeff(true),
   timeLimit(0),
   watchPercent(0),
   useCardinality(true),
@@ -56,7 +55,6 @@ Solver::Solver(int nVars, clock_t beginTime, bool optMinimizing, string filename
   varNames = vector<string> (nVars+1);
   minimizing = optMinimizing;
   inputfile = filename;
-  conflictAnalysisMethod = 1; // default is SAT
   for (int v = 1; v <= nVars; ++v) originalVar2NewLit[v] = v;
   stats.time.real = absolute_real_time ();
   stats.time.process = absolute_process_time ();
@@ -706,16 +704,14 @@ inline long long Solver::optimumRHS(WConstraint& c) {
   return maxOptRhs;
 }
 
-// original version
-// ./pbsat -bt0 1 -wperc 0 ~/459-normalized-bogr_9.lp 
-// ./pbsat ~/opb-478/91-*
+/*
+ * Symbolic version: the flags are default. solver always backjump to DL 0 for updating RHS, and use  counting propagation by default, -symb specifies updating RHS or not. 
+ * if -symb is false, this system should behave as the original solver.
+ * The following two commands are equal:
+ * ./pbsat -symb 1 -bt0 1 -wperc 0 *.opb 
+ * ./pbsat *.opb 
+*/
 
-
-// symbolic version
-// ./pbsat -symb 1 -bt0 1 -wperc 0 ~/459-normalized-bogr_9.lp 
-// ./pbsat ~/opb-478/91-*
-
-// Original Counter propagation
 void Solver::solve (int tlimit) {  
   bool feasibilityProblem = (originalObjective.size() == 0);
   timeLimit = tlimit;
@@ -730,6 +726,7 @@ void Solver::solve (int tlimit) {
     cout << "Parameter error: both update_rhs and multiObj are true,problem may happen when using symbolic conflic analyse" << endl; 
     exit(0);
   }
+  
   //if (update_rhs)    multiObj = false;
   //else if (multiObj) update_rhs = false;
   
@@ -739,12 +736,7 @@ void Solver::solve (int tlimit) {
   if (conflict) {status = INFEASIBLE; return;}
   
   strat.reportInitialSizes(constraintsPB.size(),cardinalities.size(), clauses.size(),stats.numOfBinClauses);
-  cout << "initial num units: " << model.trailSize() << endl;
-  cout << endl;
-  cout << "initial Props in PB:            " << stats.numOfPropagationsPB         << endl;
-  cout << "initial Props in Clause:        " << stats.numOfPropagationsClauses    << endl;
-  cout << "initial Props in BinClause:     " << stats.numOfPropagationsBinClauses << endl;
-  cout << endl << "initial PBs: " << constraintsPB.size() << " ,Cards: " << cardinalities.size() << " ,Clauses: " << clauses.size() << " ,Bins: " << stats.numOfBinClauses << endl;
+  cout << "initial num units: " << model.trailSize() << endl << endl;
   doCleanup();
   
   while (true) {
@@ -991,8 +983,10 @@ bool Solver::updateRHSOfPBsAtDL0 (vector<int>& pbs) {
   return false;
 }
 
-// reuse trail (dl >= 0), only update the RHS of constraints that will not be propagating or conflicting (wslkMC >= 0) 
-// we don't check for conflicts or propagation for any constraints, because they're too costly, and the DL could be different
+/* In case that we don't always backjump to DL 0 after finding a new solution, but try to reuse trail (DL >= 0). 
+ * This method will only update the RHS of constraints that will not be propagating or conflicting (wslkMC >= 0) 
+ * Otherewise, constraints with greater RHS might conflicts/propagates at different levels, we need to backjump to the lowest level, it's too expensive to check.
+* */
 bool Solver::updateRHSOfPBsAtDLGth0 () {
   assert(!conflict && stats.numOfSolutionsFound > 0);
   stats.numRHSObjNumG0NotShaved = stats.numRHSObjNumG0Shaved = stats.numRHSObjNumE0 = 0;
@@ -1046,10 +1040,7 @@ bool Solver::updateRHSOfCardsAtDL0 (vector<int>& cardIds) {
     ++stats.numCardObjNumG0NotShaved;
     c.setDegree(new_rhs);
     int ctrSize = c.getSize();
-    if (new_rhs > ctrSize) {
-      cout << "found_inconsistent, k " << k << ", new_rhs = " << new_rhs << ", ind_rhs " << c.getIndependentRHS() << ", obj_rhs " << c.getObjectiveRHS() << " * " << next_obj_rhs << ", ctrSize " << ctrSize << endl;
-      return true;
-    }
+    if (new_rhs > ctrSize) return true; // found_inconsistent
     if (new_rhs == ctrSize) {
       cardIds.push_back((int)k);
       continue;
@@ -1102,8 +1093,11 @@ bool Solver::updateRHSOfCardsAtDL0 (vector<int>& cardIds) {
 }
 
 
-// reuse trail (DL >= 0), only update the RHS of cardinalities that will have enough watches 
-// otherwise they could be conflicting or propagating at different levels, it's very costly to detect
+/* The same idea as for PB constraints.
+ * In case that we don't always backjump to DL 0 after finding a new solution, but try to reuse trail (DL >= 0). 
+ * This method will only update the RHS of constraints that will not be propagating or conflicting (wslkMC >= 0) 
+ * Otherewise, constraints with greater RHS might conflicts/propagates at different levels, we need to backjump to the lowest level, it's too expensive to check.
+* */
 bool Solver::updateRHSOfCardsAtDLGth0 (vector<int>& cardIds) {
   assert(!conflict && stats.numOfSolutionsFound > 0);
   stats.numValidUpdatesCard = stats.numCardObjNumG0NotShaved = 0;
@@ -1418,7 +1412,6 @@ int Solver::lowestDLAtWhichClausePropagates (const WConstraint & c) const {
               [](const Triple& t1, const Triple& t2){return t1.dl > t2.dl;});
   coeffLitDL.push_back({0,0,0}); // to make sure next dl always exists
   
-  //if(sumOfNonFalseMinusRHS - maxUnassigned >= 0) {cout << "err: sumOfNonFalseMinusRHS " << sumOfNonFalseMinusRHS << ", maxUnassigned " << maxUnassigned << endl << flush;  }
   assert(sumOfNonFalseMinusRHS - maxUnassigned < 0);
   int bestSoFar = coeffLitDL.size() == 0?0:coeffLitDL[0].dl;
   maxSumMinusRhs = sumOfNonFalseMinusRHS;
@@ -1442,6 +1435,14 @@ int Solver::lowestDLAtWhichClausePropagates (const WConstraint & c) const {
   else return bestSoFar;
 }
 
+
+/* The idea is same for symbolic cadinality constraints.
+ * This function can be used when updating the degree of PB constraints at a DL >= 0 based on the symbolic part, 
+ * and as long as the new RHS is greater than the current one, we always apply the new one,
+ * this might result that different PB constraints conflicts/propagates at different levels,
+ * we need to check for each of them and finally backjump to the lowest level.
+ * The process is too expensive, so it's not applied in this system.
+ * */
  int Solver::lowestDLAtWhichPBPropagates (const int pbId, bool& isConflicting, bool& isPropagating) {
 
   struct Triple{
@@ -1469,9 +1470,7 @@ int Solver::lowestDLAtWhichClausePropagates (const WConstraint & c) const {
   
   isConflicting = isPropagating = false;
 
-  if(sumOfNonFalseMinusRHS < 0) {
-    isConflicting = true; 
-  }
+  if (sumOfNonFalseMinusRHS < 0) isConflicting = true; 
   
   int bestSoFar = coeffLitDL.size() == 0?0:coeffLitDL[0].dl;
   int maxUnassigned = 0; 
@@ -1499,7 +1498,13 @@ int Solver::lowestDLAtWhichClausePropagates (const WConstraint & c) const {
   return bestSoFar;
 }
 
-// also need to watch more false lits with highest DL
+/* The idea is same for symbolic PB constraints.
+ * This function can be used when updating the degree of cadinality constraints at a DL >= 0 based on the symbolic part, 
+ * and as long as the new degree is greater than the current one, we always apply the new one,
+ * this might result that different cardinalities conflicts/propagates at different levels,
+ * we need to check for each of them and finally backjump to the lowest level.
+ * The process is too expensive, so it's not applied in this system.
+ * */
  int Solver::lowestDLAtWhichCardinalityPropagatesOrConflicts (const int cardId, const int startFalseIdx, bool& isConflicting, bool& isPropagating) {
 
   struct Triple{
@@ -1598,6 +1603,9 @@ int Solver::lowestDLAtWhichClausePropagates (const WConstraint & c) const {
   
   return bestSoFar;
 }
+
+
+
 
 // Cadical version
 void Solver::visitWatchList (int lit) {
@@ -1936,8 +1944,11 @@ bool Solver::propagate () {
     else if (not model.areAllLitsPropagatedPBWatch()) { // PB Watched propagation
       int lit = model.getNextLitToPropagatePBWatch();
       assert(lit != 0); 
-      //visitPBWatches(-lit); // the version in RoundingSat, visits PB watches and directly check for propagation
-      visitPBWatchesLazily(-lit); //slightly changed version, visits PB watches and check for propagation only when the counter < 0
+      /*The following works. this is the version in RoundingSat, visits PB watches and directly check for propagation*/
+      // visitPBWatches(-lit);
+      
+      /*slightly changed version, visits PB watches and check for propagation only when the counter < 0*/
+      visitPBWatchesLazily(-lit); 
     }
     else if (not model.areAllLitsPropagatedPB()) { // PB Counter propagation
       int lit = model.getNextLitToPropagatePB();
@@ -1946,7 +1957,7 @@ bool Solver::propagate () {
     }
     else {
       assert(not conflict);
-      //checkAllConstraintsPropagated();
+      //checkAllConstraintsPropagated(); // for debugging
       return !conflict;
     }
     
@@ -1968,8 +1979,12 @@ bool Solver::propagate_by_uniquePtr () {
       visitBinClause(-lit);           if (conflict) {--model.lastPropagatedPB; return !conflict;}
       visitWatchList(-lit);           if (conflict) {--model.lastPropagatedPB; return !conflict;}
       visitCardList(-lit);            if (conflict) {--model.lastPropagatedPB; return !conflict;}
-      //visitPBWatchesUniquePtr(-lit); if (conflict) {--model.lastPropagatedPB; return !conflict;} // the version in RoundingSat, visits PB watches and directly check for propagation
-      visitPBWatchesUniquePtrLazily(-lit); if (conflict) {--model.lastPropagatedPB; return !conflict;} //slightly changed version, visits PB watches and check for propagation only when the counter < 0
+      
+      /*The following works. this is the version in RoundingSat, visits PB watches and directly check for propagation*/
+      //visitPBWatchesUniquePtr(-lit); if (conflict) {--model.lastPropagatedPB; return !conflict;} 
+      
+      /*slightly changed version, visits PB watches and check for propagation only when the counter < 0*/
+      visitPBWatchesUniquePtrLazily(-lit); if (conflict) {--model.lastPropagatedPB; return !conflict;} 
       visitPBCounterListsUniquePtr(-lit); 
       
       if (conflict) {
@@ -1977,8 +1992,6 @@ bool Solver::propagate_by_uniquePtr () {
         lit = -lit;
         
         vector<PBWatchElem>& wl = (lit>0?positivePBWatches[lit]:negativePBWatches[-lit]);
-        if (wl.size() == 0) return !conflict;
-        
         for (PBWatchElem& e: wl) sumOfWatches[e.ctrId] += e.coef;
         
         return !conflict; 
@@ -3010,8 +3023,6 @@ void Solver::doCleanup () {
     nconfl_to_reduce += 100;
   
   shuffle(LBDAct.begin(), LBDAct.end(), default_random_engine(stats.numOfCleanUps));
-  //shuffle(LBDAct.begin(), LBDAct.end(), default_random_engine(rand()%(stats.numOfCleanUps+1)));
-  //shuffle(LBDAct.begin(), LBDAct.end(), default_random_engine(rand()));
   
   std::sort(LBDAct.begin(), LBDAct.end(), [](Triple& x, Triple& y) {
     return x.LBD > y.LBD || (x.LBD == y.LBD && x.act < y.act);
@@ -3024,8 +3035,6 @@ void Solver::doCleanup () {
     if (LBDAct[i].id < constraintsPB.size()) ++numRemovedPBLemmas;
   }
 
-  //if (numPBLems > 0 and constraintsPB.size() > 0) cout << endl << "nPBs " << constraintsPB.size() << ", %Deleted " << (double)numDelete/totalLearnts*100 << "% ,totalLearnts/2 " << totalLearnts/2 << ", LBDAct size " << LBDAct.size() << ", numPBLems " << numPBLems << ", %Removed PBLems: " << (double)numRemovedPBLemmas/numPBLems*100 << "%" << endl;
-
   vector<ConstraintCleanup> tempConstraints;
   vector<ConstraintCleanup> tempCardinalities;
   vector<ConstraintCleanup> tempClauses;
@@ -3037,13 +3046,11 @@ void Solver::doCleanup () {
   cleanupBinaryClauses(tempBinaryClauses);
   stats.numOfIntsInPbsAndClauses = 0;
   
-  if(stats.numOfSolutionsFound > 0 and tempConstraints.size() > 0) {
+  if (stats.numOfSolutionsFound > 0 and tempConstraints.size() > 0) {
     ++stats.numPerc;
     double currentG0NotShaved = (double)stats.PBObjNumG0NotShaved/tempConstraints.size()*100;
     stats.sumPercPBObjNumG0NotShaved += currentG0NotShaved;
-    //cout << "clean-" << stats.numOfCleanUps << ": stats.sumPercPBObjNumG0NotShaved " << stats.sumPercPBObjNumG0NotShaved << ", avg " << stats.sumPercPBObjNumG0NotShaved/stats.numPerc << "%" << ", current " << currentG0NotShaved <<"% ,left PBs " << tempConstraints.size() << " (" << (double)tempConstraints.size()/constraintsPB.size()*100 << "%)" << ", percGood " << (double)stats.numPBG0NotShaved/tempConstraints.size()*100 << "%" << endl << flush;
   }
-
   
   for ( int i = 0; i < numVars+1; i++ ) positiveOccurLists[i].clear();
   for ( int i = 0; i < numVars+1; i++ ) negativeOccurLists[i].clear();
@@ -3121,8 +3128,7 @@ void Solver::doCleanup () {
   //int nInit = total-newPBs;
   //cout << endl << "doCleanup-" << stats.numOfCleanUps << ": nDecs " << stats.numOfDecisions << ", nConfs " << stats.numOfConflicts << ", total PBs: " << total << ", and #initial: " << nInit << ", newPBs " << newPBs << ", newCards " << newCards << ", newCls " << newCls << ", newBins " << tempBinaryClauses.size() << ", nLPB " << stats.numOfTotalLearnedPBConstraints  << ", nLCards " <<  stats.numOfTotalLearnedCardinalities << ", nLCls " << stats.numOfTotalLearnedClauses << ", nLBins " << stats.numOfTotalLearnedBinClauses << ", nPBs " << constraintsPB.size() << ", nCards " << cardinalities.size() << ", obj_num " << obj_num << endl;
   
-  strat.reportNewPBClausesDatabase(constraintsPB.size() - newPBs, cardinalities.size() - newCards, clauses.size() - newCls, tempBinaryClauses.size(),
-                                   newPBs, newCards, newCls);
+  strat.reportNewPBClausesDatabase(constraintsPB.size() - newPBs, cardinalities.size() - newCards, clauses.size() - newCls, tempBinaryClauses.size(), newPBs, newCards, newCls);
 }
 
 
@@ -3192,6 +3198,7 @@ void Solver::buildBinaryClauses (const vector<pair<int,int> >& binClauses) {
   }
 }
 
+// not used yet
 void Solver::discoverImplicitBinClauses (int ctrId, WConstraint& ic) {
   assert(model.currentDecisionLevel() == 0);
   static vector<bool> added(maxLitId() + 1,false);  added.resize(maxLitId()+1,false);
@@ -3203,7 +3210,7 @@ void Solver::discoverImplicitBinClauses (int ctrId, WConstraint& ic) {
   ic.sortByDecreasingCoefficient();
   long long int S = maxSumOfConstraintMinusRhs(ic);
   for (int i = 0; i < ic.getSize(); ++i) {
-    assert(model.isUndefLit(ic.getIthLiteral(i)));  //rui
+    assert(model.isUndefLit(ic.getIthLiteral(i)));
     long long int limit = S - ic.getIthCoefficient(i);
     if (i + 1 < ic.getSize() and ic.getIthCoefficient(i+1) <= limit) { // no more binaries  // because limit-ic.getIthCoefficient(i+1) >= 0 for all j > i
       if (not st.empty()) {
@@ -3398,7 +3405,7 @@ void Solver::lemmaShortening (vector<int>& lemma){
           break;
         }
 
-        // Albert: the three true in AuxFunction were false in the previous SAT solver
+        // the three true in AuxFunction were false in the previous SAT solver
         // it seems to me that this is stronger as we can ignore dl-zero literals
         Reason r = model.getReasonOfLit(testingLit);
         if (r.isBinClause())
@@ -3476,7 +3483,6 @@ void Solver::fixRoundingProblemSAT (int l, WConstraint & c) const {
     int var = abs(c.getIthLiteral(i));
     if (var == x) {
       coeffL = c.getIthCoefficient(i);
-      //      w2.addMonomial(1,c.getIthLiteral(i));
     }
   }  
 

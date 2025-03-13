@@ -7,29 +7,28 @@ CC              = g++
 #the following is for valgrind --leak-check=yes intsat c.lp
 #CFLAGS          = -g -O0 -Wall
 
-# use a gcc version >= c++17 
-CFLAGS          = -std=c++17 -O3 -Wall -static -DNDEBUG
+# use a gcc version >= c++14
+CFLAGS          = -std=c++17 -O3 -Wall -static
 
+ifndef d
+CFLAGS += -DNDEBUG
+endif
 
-SRCS = 	main.cpp \
+SRCS =  main.cpp \
 	PBConstraint.cpp \
 	WConstraint.cpp \
 	Model.cpp \
 	MaxHeap.cpp \
 	Solver.cpp
 
-
 #LIBS = -lgmpxx -lgmp
 
 OBJS = $(addsuffix .o, $(basename $(SRCS) .cpp))
 
-all: pbsat #mydiff
+all: pbsat
 
 pbsat: $(OBJS)
 	$(CC) $(CFLAGS) $(OBJS) -o pbsat
-
-mydiff: mydiff.cpp
-	$(CC) $(CFLAGS) mydiff.cpp -o mydiff
 
 %.o: %.cpp
 	$(CC) $(CFLAGS) -c $*.cpp

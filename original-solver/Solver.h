@@ -55,10 +55,8 @@ class Solver {
   Clause clauseConflict;
   pair<int,int> binClauseConflict;
   
-  
   long long nconfl_to_reduce = 2000;
   long long nconfl_to_restart = 0;
-  
 
   // ---------------------------------------------------
   struct ConstraintCleanup {
@@ -69,7 +67,7 @@ class Solver {
     ConstraintCleanup(const WConstraint& c, bool i, int a, int lbd):wc(c),isInit(i),activity(a),LBD(lbd){}
   };
   
-  class WatchListElem {
+  class WatchListElem { // for clauses
   public:
     int clauseId;
     int cachedLit;
@@ -90,9 +88,6 @@ class Solver {
     PBWatchElem (int ctrNum, int c, int idx):ctrId(ctrNum), coef(c), idx(idx) {}
   };
   
-
-  vector<Clause> clauses;
-  
   vector<vector<WatchListElem> > positiveWatchLists;
   vector<vector<WatchListElem> > negativeWatchLists;
   
@@ -108,20 +103,15 @@ class Solver {
   vector<OccurList> positiveOccurLists;
   vector<OccurList> negativeOccurLists;
   
-  
-  // If constraint propagates or is conflicting then necessarily propCounter is < 0
-  // propCounter is: sum of all coefficient of non-false literals (how much the lhs could be)
-  //                  minus the rhs
-  //                  minus an upperbound of the largest coefficient of an unassigned literal
-  //                           (computing it precisely is too expensive)
   vector<PBConstraint> constraintsPB;
   vector<Cardinality> cardinalities;
+  vector<Clause> clauses;
   vector<bool> useCounter;
   vector<long long> sumOfWatches;
   int median;
   int trueVarAtDLZero;
   int falseVarAtDLZero;
-  vector<int> originalVar2NewLit;//var in the input file --> current literal   // rui: varString --> var --> lit(the sign depends on the coef of varString)
+  vector<int> originalVar2NewLit;//var in the input file --> current literal (in case we want to rename the lits)   // varString --> var --> lit(the sign depends on the coef of varString)
   vector<int> oldVar2NewLit; // this is used when apply newly found SCCs
   
  public:
@@ -145,13 +135,11 @@ class Solver {
   vector<int> initialInputSolution; // for heuristic
   StatusSolver status;
   bool SATConflictAnalysis;
-  int conflictAnalysisMethod;
   
   int id; // used to share units/binaries
   bool infoToShare;
   bool writeInfo;
   bool readInfo;
-  bool usedDecreasingCoeff; // this flag is useful only for watched propagation. (-watch 1), to disable it, use (-watch 1  -sort 0)
   int timeLimit;
   double watchPercent;
   bool useCardinality;
@@ -179,14 +167,6 @@ class Solver {
   inline void  setMultipleObj(bool multi) {multiObj = multi;}
   inline void  setPropagatebyPriority(bool prior) {propagate_by_priority = prior;}
   
-  inline bool  useDecreasingCoeff() {return usedDecreasingCoeff;}
-  inline void  setUseDecreasingCoeff(bool useDecCoeff) {usedDecreasingCoeff = useDecCoeff;}
-  
-  inline bool  wslkIsConsistentWithWatchedLits(int ctrId);
-  inline long long   realWslk(PBConstraint& c);
-  void printWatchInfo(const PBConstraint& c);
-  void printWatchInfo(const int ctrId);
-  
   void         solve(int tlimit);
   
   StatusSolver currentStatus ( );
@@ -196,7 +176,6 @@ class Solver {
   void  readInitialSolution(const string& fileName);
   void  readExecuteInfoFile(const string& executeInfoFile);
   void checkInitialInputSolutionNeeded();
-  inline void  setConflictAnalysisMethod(int caType)    {conflictAnalysisMethod = caType;}
   
   void         addAndPropagatePBConstraint (WConstraint & c, const bool isInitial, int activity, const int LBD, bool isObj = false);
   
@@ -269,7 +248,6 @@ class Solver {
   void fixRoundingProblem(int confLit, int coef, WConstraint & c) const;
   void ffixRoundingProblem(int x, WConstraint & c) const;
   void fixRoundingProblemSAT(int l, WConstraint & c) const;
-  void simulateFixRoundingProblemSAT(int l, WConstraint & c, int h) const;  
   
   // Conflict analysis and learning
   void backjumpMultipleOptions ( const WConstraint& wc );
@@ -331,12 +309,8 @@ class Solver {
   void addBinaryClause ( int lit1, int lit2);
   bool existsBinaryClause(int lit1, int lit2);
   void addPBConstraint(PBConstraint & c);
-  long long initPBWatchedLits(PBConstraint& pc);
-  void addInitialWatchedPBConstraint(PBConstraint & c);
   void discoverImplicitBinClauses(int ctrId, WConstraint& ic);
   void discoverImplicitBinClauses2(int ctrId, WConstraint& ic);
-  void discoverImplicitWatchedPBBinClauses(int ctrId, WConstraint& ic);
-  void discoverImplicitWatchedPBBinClauses2(int ctrId, WConstraint& ic);
   void doCleanup();
   double luby(double y, int i);
   void cleanupPBConstraints (vector<ConstraintCleanup>& pbs, vector<ConstraintCleanup>& cards, vector<ConstraintCleanup>& cls, vector<pair<int,int> >& binClauses, vector<bool>& ctrIsRemoved, uint newestObjectiveFunction);
